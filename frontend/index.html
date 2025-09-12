@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Personalization Analysis System</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>" />
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        :root {
+            --bg-color: #f0f2f5;
+            --card-bg: #ffffff;
+            --text-color: #1a202c;
+            --subtle-text: #4a5568;
+            --border-color: #e2e8f0;
+            --primary-blue: #4a90e2;
+            --blue-hover: #357abd;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 2rem;
+        }
+
+        .container {
+            display: flex;
+            gap: 2rem;
+            max-width: 1200px;
+            margin: auto;
+        }
+
+        .agent-column {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+        
+        .agent-card {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            padding: 1.5rem;
+            border: 1px solid var(--border-color);
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        h2 {
+            font-size: 1.5rem;
+            margin-top: 0;
+            border-bottom: 2px solid var(--primary-blue);
+            padding-bottom: 0.5rem;
+            display: inline-block;
+        }
+
+        h3 {
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+            color: var(--subtle-text);
+        }
+
+        .input-section {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        #urlInput {
+            flex-grow: 1;
+            padding: 0.75rem;
+            font-size: 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+        }
+        
+        #auditButton {
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            font-weight: 500;
+            color: #fff;
+            background-color: var(--primary-blue);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #auditButton:hover {
+            background-color: var(--blue-hover);
+        }
+
+        .hidden { display: none !important; }
+
+        .loader {
+            width: 30px;
+            height: 30px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid var(--primary-blue);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 2rem auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .results-list {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        .results-list li {
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--border-color);
+            line-height: 1.5;
+        }
+        .results-list li:last-child {
+            border-bottom: none;
+        }
+
+        .score-card {
+            text-align: center;
+        }
+
+        .score-circle {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            margin: 1rem auto;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 2.5rem;
+            font-weight: 700;
+            border: 8px solid;
+        }
+
+        .placeholder-text {
+            color: var(--subtle-text);
+            text-align: center;
+            padding: 2rem;
+            border: 2px dashed var(--border-color);
+            border-radius: 8px;
+        }
+        
+        .error-message {
+            text-align: center;
+            color: #d9534f;
+            background-color: #f2dede;
+            border: 1px solid #ebccd1;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+
+    <main>
+        <h1>AI-Powered Personalization Analysis System</h1>
+        <div id="error" class="error-message hidden"></div>
+        <div class="container">
+            <div class="agent-column">
+                <div class="agent-card">
+                    <h2>Agent 1: Web Scraper</h2>
+                    <div class="input-section">
+                        <input type="text" id="urlInput" placeholder="https://example.com">
+                        <button id="auditButton">Analyze</button>
+                    </div>
+                </div>
+
+                <div id="agent1-results-card" class="agent-card hidden">
+                    <h3>Key Findings & Detected Tech</h3>
+                    <div id="agent1-loader" class="loader"></div>
+                    <ul id="keyFindings" class="results-list"></ul>
+                </div>
+            </div>
+
+            <div class="agent-column">
+                <div id="agent2-card" class="agent-card">
+                    <h2>Agent 2: Advisor</h2>
+                    <div id="agent2-placeholder" class="placeholder-text">
+                        <p>Waiting for analysis from Agent 1...</p>
+                    </div>
+                    <div id="agent2-results" class="hidden">
+                         <div id="agent2-loader" class="loader"></div>
+                         <div id="agent2-content" class="hidden">
+                            <div class="score-card">
+                                <h3>Overall Score</h3>
+                                <div id="score-circle" class="score-circle">
+                                    <span id="score">0</span>
+                                </div>
+                            </div>
+                            <div class="recommendations-card">
+                                <h3>Recommendations</h3>
+                                <ul id="recommendations" class="results-list"></ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // DOM Elements
+            const auditButton = document.getElementById('auditButton');
+            const urlInput = document.getElementById('urlInput');
+            const errorDiv = document.getElementById('error');
+            
+            // Agent 1 Elements
+            const agent1ResultsCard = document.getElementById('agent1-results-card');
+            const agent1Loader = document.getElementById('agent1-loader');
+            const keyFindingsList = document.getElementById('keyFindings');
+            
+            // Agent 2 Elements
+            const agent2Card = document.getElementById('agent2-card');
+            const agent2Placeholder = document.getElementById('agent2-placeholder');
+            const agent2Results = document.getElementById('agent2-results');
+            const agent2Loader = document.getElementById('agent2-loader');
+            const agent2Content = document.getElementById('agent2-content');
+            const scoreEl = document.getElementById('score');
+            const scoreCircle = document.getElementById('score-circle');
+            const recommendationsList = document.getElementById('recommendations');
+            
+            auditButton.addEventListener('click', runAudit);
+
+            async function runAudit() {
+                const url = urlInput.value.trim();
+                if (!url) {
+                    showError("Please enter a valid URL.");
+                    return;
+                }
+
+                resetUI();
+                
+                try {
+                    const response = await fetch('http://127.0.0.1:5001/audit', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: url }),
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || 'An unknown server error occurred.');
+                    }
+                    const data = await response.json();
+                    
+                    // Display Agent 1 results
+                    populateAgent1(data.key_findings);
+                    
+                    // Simulate handoff and display Agent 2 results
+                    await handoffToAgent2(data);
+
+                } catch (err) {
+                    showError(err.message);
+                    resetUIOnError();
+                }
+            }
+
+            function populateAgent1(findings) {
+                agent1Loader.classList.add('hidden');
+                keyFindingsList.innerHTML = '';
+                if (findings && findings.length > 0) {
+                    findings.forEach(finding => {
+                        const li = document.createElement('li');
+                        li.textContent = finding;
+                        keyFindingsList.appendChild(li);
+                    });
+                } else {
+                    keyFindingsList.innerHTML = '<li>No specific findings were identified.</li>';
+                }
+            }
+
+            async function handoffToAgent2(data) {
+                agent2Results.classList.remove('hidden');
+                agent2Loader.classList.remove('hidden');
+                
+                // Simulate processing time for Agent 2
+                await new Promise(resolve => setTimeout(resolve, 1500)); 
+
+                agent2Loader.classList.add('hidden');
+                agent2Content.classList.remove('hidden');
+                
+                // Populate score
+                scoreEl.textContent = data.overall_score;
+                if (data.overall_score >= 75) {
+                    scoreCircle.style.borderColor = '#28a745'; // Green
+                } else if (data.overall_score >= 40) {
+                    scoreCircle.style.borderColor = '#ffc107'; // Yellow
+                } else {
+                    scoreCircle.style.borderColor = '#dc3545'; // Red
+                }
+
+                // Populate recommendations
+                recommendationsList.innerHTML = '';
+                if (data.recommendations && data.recommendations.length > 0) {
+                    data.recommendations.forEach(rec => {
+                        const li = document.createElement('li');
+                        li.textContent = rec;
+                        recommendationsList.appendChild(li);
+                    });
+                } else {
+                     recommendationsList.innerHTML = '<li>No specific recommendations could be generated.</li>';
+                }
+            }
+
+            function resetUI() {
+                errorDiv.classList.add('hidden');
+                
+                // Reset Agent 1
+                agent1ResultsCard.classList.remove('hidden');
+                agent1Loader.classList.remove('hidden');
+                keyFindingsList.innerHTML = '';
+                
+                // Reset Agent 2
+                agent2Placeholder.classList.add('hidden');
+                agent2Results.classList.add('hidden');
+                agent2Content.classList.add('hidden');
+                agent2Loader.classList.remove('hidden');
+            }
+            
+            function resetUIOnError() {
+                agent1ResultsCard.classList.add('hidden');
+                agent2Placeholder.classList.remove('hidden');
+            }
+
+            function showError(message) {
+                errorDiv.textContent = `Error: ${message}`;
+                errorDiv.classList.remove('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+id,use_case,best_practice,evidence_keywords
+1,"Product Recommendations","Display relevant product recommendations based on browsing history or past purchases. Sections should be clearly labeled 'Recommended for You' or 'Inspired by Your Browsing History'.","recommended for you,recently viewed,customers also bought,inspired by"
+2,"Personalized Hero Banners","Change the main banner image or offer on the homepage based on user segments (e.g., new vs. returning visitor, location).","welcome back,special offer for you,just for you"
+3,"Dynamic Content Blocks","Alter content blocks, articles, or promotions based on user data. For example, a travel site showing deals from the user's nearest airport.","deals from your area,popular near you"
+4,"Search Personalization","Rank search results based on user preferences or past search history. Prioritize brands or categories the user has shown interest in.","search results,sort by relevance"
+5,"Geo-location Targeting","Use the user's location (IP-based) to show localized content, such as store locations, local news, or weather-appropriate products.","your local store,shipping to,near you"

@@ -1,0 +1,11 @@
+vendor_name,category,signatures
+Optimizely,A/B Testing,"optimizely.com,window.optimizely"
+VWO,A/B Testing,"vwo.com,window.VWO"
+Google Optimize,A/B Testing,"optimize.google.com,google-optimize"
+Adobe Target,Personalization,"tt.omtrdc.net,adobe.target"
+Dynamic Yield,Personalization,"dynamicyield.com,DY.API"
+Monetate,Personalization,"monetate.net,window.monetate"
+Segment,CDP,"segment.com,window.analytics,cdn.segment"
+Tealium,CDP,"tealiumiq.com,window.utag,utag.js"
+Amplitude,Analytics & CDP,"amplitude.com,window.amplitude"
+FullStory,Analytics,"fullstory.com,window.FS"
