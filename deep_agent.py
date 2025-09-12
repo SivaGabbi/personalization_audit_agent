@@ -172,10 +172,10 @@ def run_deep_simulation(url, num_products=3):
         difference = compare_images(before_screenshot_path, after_screenshot_path, diff_path)
         
         # --- THIS IS THE MODIFIED SCORING LOGIC ---
-        if difference >= 10.0:
+        if difference >= 5.0:
             score['homepage_change'] = 40.0
         else:
-            score['homepage_change'] = (difference / 10.0) * 40.0
+            score['homepage_change'] = (difference / 5.0) * 40.0
 
     except Exception as e:
         print(f"\n❌ An error occurred during the simulation: {e}")
