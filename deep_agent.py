@@ -18,10 +18,10 @@ VENDORS_FILE = 'vendors.csv'
 RECOMMENDATION_KEYWORDS = [
     'recommended for you', 'inspired by your browsing', 'recently viewed',
     'customers also bought', 'frequently bought together', 'similar products',
-    'you might also like', 'because you viewed'
+    'you might also like', 'because you viewed', 'complete your purchase'
 ]
 
-# --- Helper Functions for Scoring ---
+# --- Helper Functions (Unchanged) ---
 
 def detect_vendors(driver):
     """Scans for third-party personalization/testing vendor scripts."""
@@ -72,8 +72,6 @@ def check_for_recommendations(driver):
         return False
     return False
 
-# --- Core Simulation and Comparison Logic ---
-
 def find_product_links(driver, base_url, limit=5):
     """Tries to find links that appear to be products."""
     print("🕵️  Searching for product links...")
@@ -112,7 +110,7 @@ def compare_images(path_before, path_after, diff_path):
         return (1 - similarity_score) * 100
     except FileNotFoundError: return 0
 
-# --- Main Simulation Function (Updated with Scoring) ---
+# --- Main Simulation Function ---
 
 def run_deep_simulation(url, num_products=3):
     """
@@ -131,20 +129,23 @@ def run_deep_simulation(url, num_products=3):
 
     if not os.path.exists('screenshots'): os.makedirs('screenshots')
 
-    score = { 'homepage_change': 0, 'tools_detected': 0, 'homepage_recs': 0, 'product_recs': 0 }
+    # MODIFIED: Initialize scoring components with new weights
+    score = { 'homepage_change': 0, 'tools_detected': 0, 'homepage_recs': 0, 'product_recs': 0, 'cart_recs': 0 }
     found_vendors_list = []
+    difference = 0.0
     
     try:
+        # Phase 1: Initial Homepage Analysis
         print(f"\n[Phase 1: Initial Homepage Analysis]")
         driver.get(url)
         WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
         before_screenshot_path = 'screenshots/homepage_before.png'
         driver.save_screenshot(before_screenshot_path)
         print(f"📸 Took 'before' screenshot.")
-        
         found_vendors_list = detect_vendors(driver)
-        if found_vendors_list: score['tools_detected'] = 30
+        if found_vendors_list: score['tools_detected'] = 25 # MODIFIED: Points adjusted
 
+        # Phase 2: Product Browsing Simulation
         print(f"\n[Phase 2: Product Browsing Simulation]")
         product_links = find_product_links(driver, url, limit=num_products)
         if not product_links:
@@ -156,26 +157,49 @@ def run_deep_simulation(url, num_products=3):
             driver.get(link)
             WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
             if score['product_recs'] == 0 and check_for_recommendations(driver):
-                score['product_recs'] = 15
+                score['product_recs'] = 15 # MODIFIED: Points adjusted
 
-        print(f"\n[Phase 3: Final Homepage Analysis]")
+        # Phase 3: Cart Page Analysis
+        print(f"\n[Phase 3: Cart Page Analysis]")
+        cart_paths = ['/cart', '/basket', '/checkout/cart']
+        cart_found = False
+        for path in cart_paths:
+            cart_url = url.rstrip('/') + path
+            print(f"🛒 Trying to navigate to cart page: {cart_url}")
+            try:
+                driver.get(cart_url)
+                WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+                if "cart" in driver.title.lower() or "basket" in driver.title.lower():
+                    cart_found = True
+                    if check_for_recommendations(driver):
+                        score['cart_recs'] = 15 # MODIFIED: Points adjusted
+                    break 
+            except Exception:
+                print(f"   - Path {path} did not lead to a valid page.")
+                continue
+        if not cart_found:
+            print("   - ⚪ Could not find a cart page to analyze.")
+
+
+        # Phase 4: Final Homepage Analysis
+        print(f"\n[Phase 4: Final Homepage Analysis]")
         driver.get(url)
         WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
         after_screenshot_path = 'screenshots/homepage_after.png'
         driver.save_screenshot(after_screenshot_path)
         print(f"📸 Took 'after' screenshot.")
 
-        if check_for_recommendations(driver): score['homepage_recs'] = 15
+        if check_for_recommendations(driver): score['homepage_recs'] = 15 # MODIFIED: Points adjusted
 
         print("\n🔎 Comparing screenshots for dynamic changes...")
         diff_path = 'screenshots/homepage_diff.png'
         difference = compare_images(before_screenshot_path, after_screenshot_path, diff_path)
         
-        # --- THIS IS THE MODIFIED SCORING LOGIC ---
+        # MODIFIED: Scoring logic adjusted for a max of 30 points
         if difference >= 5.0:
-            score['homepage_change'] = 40.0
+            score['homepage_change'] = 30.0
         else:
-            score['homepage_change'] = (difference / 5.0) * 40.0
+            score['homepage_change'] = (difference / 5.0) * 30.0
 
     except Exception as e:
         print(f"\n❌ An error occurred during the simulation: {e}")
@@ -190,18 +214,22 @@ def run_deep_simulation(url, num_products=3):
     print(f"📊 Total Score: {total_score:.0f} / 100")
     print("\n--- Score Breakdown ---")
     
+    # MODIFIED: Report updated with new max scores
     change_status = "✅" if score['homepage_change'] > 0 else "⚪"
-    print(f"{change_status} Dynamic Homepage Change: {score['homepage_change']:.0f}/40 pts (based on {difference:.2f}% visual change)")
+    print(f"{change_status} Dynamic Homepage Change: {score['homepage_change']:.0f}/30 pts (based on {difference:.2f}% visual change)")
 
     tools_status = "✅" if score['tools_detected'] > 0 else "⚪"
     tools_details = f"(Found: {', '.join(found_vendors_list)})" if found_vendors_list else ""
-    print(f"{tools_status} A/B & Personalization Tools: {score['tools_detected']}/30 pts {tools_details}")
+    print(f"{tools_status} A/B & Personalization Tools: {score['tools_detected']:.0f}/25 pts {tools_details}")
     
     recs_home_status = "✅" if score['homepage_recs'] > 0 else "⚪"
-    print(f"{recs_home_status} Homepage Recommendations: {score['homepage_recs']}/15 pts")
+    print(f"{recs_home_status} Homepage Recommendations: {score['homepage_recs']:.0f}/15 pts")
 
     recs_prod_status = "✅" if score['product_recs'] > 0 else "⚪"
-    print(f"{recs_prod_status} Product Page Recommendations: {score['product_recs']}/15 pts")
+    print(f"{recs_prod_status} Product Page Recommendations: {score['product_recs']:.0f}/15 pts")
+    
+    recs_cart_status = "✅" if score['cart_recs'] > 0 else "⚪" 
+    print(f"{recs_cart_status} Cart Page Recommendations: {score['cart_recs']:.0f}/15 pts")
     print("="*40)
 
 if __name__ == "__main__":
