@@ -17,11 +17,16 @@ from skimage.metrics import structural_similarity as ssim
 import numpy as np
 from PIL import Image, ImageChops
 import google.generativeai as genai
+from pptx import Presentation
+from pptx.util import Inches, Pt
+from pptx.enum.shapes import MSO_SHAPE
+from pptx.dml.color import RGBColor
+
 
 # --- In-memory storage for running tasks ---
 tasks = {}
 
-# --- Configuration for Scoring & RAG ---
+# --- Configuration for Scoring & RAG (Unchanged) ---
 VENDORS_FILE = 'vendors.csv'
 KB_FILE = 'personalization_kb.csv'
 RECOMMENDATION_KEYWORDS = [
@@ -30,7 +35,7 @@ RECOMMENDATION_KEYWORDS = [
     'you might also like', 'because you viewed', 'complete your purchase'
 ]
 
-# --- RAG/LLM Setup ---
+# --- RAG/LLM Setup (Unchanged) ---
 try:
     kb_df = pd.read_csv(KB_FILE)
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -40,7 +45,7 @@ except Exception as e:
     print(f"⚠️ RAG/LLM Warning: {e}")
     llm_model = None
 
-# --- Helper Functions ---
+# --- Helper Functions (Unchanged) ---
 def update_task(task_id, status=None, message=None, progress=None, result=None):
     if task_id in tasks:
         if status: tasks[task_id]['status'] = status
@@ -50,49 +55,32 @@ def update_task(task_id, status=None, message=None, progress=None, result=None):
         if progress is not None: tasks[task_id]['progress'] = progress
         if result: tasks[task_id]['result'] = result
 
-# --- THIS IS THE CORRECTED FUNCTION ---
 def get_rag_context(score_report):
-    """Retrieves relevant best practices from the knowledge base for the LLM."""
     context = []
-    # Create a simple map from the score report's breakdown for easy lookups
     findings_map = {item['name']: item for item in score_report.get('breakdown', [])}
-
-    # Check for findings using the new structure
     if findings_map.get('A/B & Personalization Tools', {}).get('score', 0) > 0:
         context.append(kb_df[kb_df['use_case'] == 'Product Recommendations'].iloc[0]['best_practice'])
     if findings_map.get('Homepage Recommendations', {}).get('score', 0) > 0:
         context.append(kb_df[kb_df['use_case'] == 'Personalized Hero Banners'].iloc[0]['best_practice'])
-    
     return "\n".join(context) if context else "General personalization best practices."
 
 def generate_recommendations_with_llm(task_id, score_report):
-    """Calls the LLM to generate qualitative recommendations based on quantitative findings."""
     update_task(task_id, message="[Agent 2] Analyzing score report with RAG engine...")
     if not llm_model:
         update_task(task_id, message="   - ⚠️ LLM not configured. Skipping recommendations.")
         return ["LLM model not available. Recommendations could not be generated."]
-
     findings_summary = []
     for item in score_report['breakdown']:
         if item['score'] > 0:
             findings_summary.append(f"- {item['name']}: Scored {item['score']:.0f}/{item['max_score']}. {item['details']}")
-    
     rag_context = get_rag_context(score_report)
-
     prompt = f"""
-    You are Agent 2, a world-class Personalization Advisor.
-    Agent 1 has conducted a technical analysis of a website and produced the following score report:
-
+    You are Agent 2, a world-class Personalization Advisor. Agent 1 has produced the following score report:
     **Quantitative Findings from Agent 1:**
     - Overall Score: {score_report['total_score']:.0f}/100
-    - Breakdown:
-    {json.dumps(findings_summary, indent=2)}
-
-    **Relevant Best Practices from RAG Knowledge Base:**
-    {rag_context}
-
+    - Breakdown: {json.dumps(findings_summary, indent=2)}
     **Your Task:**
-    Based on the quantitative findings and best practices, generate a JSON object containing a key "recommendations". This should be a list of 3 to 4 concise, actionable, and expert-level recommendations to help the user improve their personalization strategy.
+    Based on the findings, generate a JSON object with a key "recommendations". This should be a list of 3 to 4 concise, actionable recommendations.
     """
     try:
         response = llm_model.generate_content(prompt)
@@ -104,7 +92,53 @@ def generate_recommendations_with_llm(task_id, score_report):
         update_task(task_id, message=f"   - ❌ LLM Error: {e}")
         return [f"An error occurred while generating recommendations: {e}"]
 
-# --- Functions from deep_agent.py (adapted for background tasks) ---
+# --- THIS IS THE MODIFIED PRESENTATION FUNCTION ---
+def create_and_save_presentation(result_data, filename):
+    prs = Presentation()
+    score_report = result_data.get('score_report', {})
+    recommendations = result_data.get('recommendations', [])
+    
+    # Slide 1: Title
+    slide = prs.slides.add_slide(prs.slide_layouts[0])
+    title, subtitle = slide.shapes.title, slide.placeholders[1]
+    url = score_report.get("url", "Website")
+    title.text = "Personalization Audit Report"
+    subtitle.text = f"An analysis of {url}\nGenerated on {pd.Timestamp.now().strftime('%Y-%m-%d')}"
+    
+    # Slide 2: Score Summary
+    slide = prs.slides.add_slide(prs.slide_layouts[5]) # Blank layout
+    title_shape = slide.shapes.add_textbox(Inches(0.5), Inches(0.5), Inches(9), Inches(1))
+    title_shape.text = "Executive Summary: Score Breakdown"
+    title_shape.text_frame.paragraphs[0].font.bold = True
+    title_shape.text_frame.paragraphs[0].font.size = Pt(28)
+
+    txBox = slide.shapes.add_textbox(Inches(0.5), Inches(1.5), Inches(9), Inches(5.5))
+    tf = txBox.text_frame
+    tf.text = f"Overall Score: {score_report.get('total_score', 0):.0f}/100"
+    tf.paragraphs[0].font.bold = True
+    tf.paragraphs[0].font.size = Pt(24)
+    
+    for item in score_report.get('breakdown', []):
+        p = tf.add_paragraph()
+        p.text = f"{item['name']}: {item['score']:.0f}/{item['max_score']} - {item['details']}"
+        p.level = 1
+        
+    # NEW: Create one slide per recommendation
+    for i, rec in enumerate(recommendations, 1):
+        slide = prs.slides.add_slide(prs.slide_layouts[1])
+        slide.shapes.title.text = f"Recommendation #{i}"
+        tf = slide.placeholders[1].text_frame
+        tf.clear()
+        p = tf.add_paragraph()
+        p.text = rec
+        p.font.size = Pt(18)
+        
+    # Save to file
+    if not os.path.exists('reports'):
+        os.makedirs('reports')
+    prs.save(filename)
+
+# --- Functions from deep_agent.py (Unchanged) ---
 def detect_vendors(driver, task_id):
     update_task(task_id, message="[Agent 1] Scanning for A/B testing and personalization tools...")
     try: vendors_df = pd.read_csv(VENDORS_FILE)
@@ -240,6 +274,7 @@ def run_deep_simulation(url, task_id, num_products=3):
         # --- AGENT 2 EXECUTION ---
         total_score = sum(score.values())
         score_report = {
+            "url": url,
             "total_score": total_score,
             "breakdown": [
                 {"name": "Dynamic Homepage Change", "score": score['homepage_change'], "max_score": 30, "details": f"Based on {difference:.2f}% visual change"},
@@ -252,11 +287,13 @@ def run_deep_simulation(url, task_id, num_products=3):
         update_task(task_id, progress=90)
         
         recommendations = generate_recommendations_with_llm(task_id, score_report)
+        final_result = { "score_report": score_report, "recommendations": recommendations }
         
-        final_result = {
-            "score_report": score_report,
-            "recommendations": recommendations
-        }
+        update_task(task_id, message="[System] Generating PowerPoint report...", progress=98)
+        presentation_filename = f"reports/Report_{task_id}.pptx"
+        create_and_save_presentation(final_result, presentation_filename)
+        update_task(task_id, message=f"[System] Report saved as {presentation_filename}")
+
         update_task(task_id, status='completed', message="--- All Agents Finished ---", progress=100, result=final_result)
 
     except Exception as e:
@@ -264,7 +301,7 @@ def run_deep_simulation(url, task_id, num_products=3):
     finally:
         driver.quit()
 
-# --- Flask App and API Endpoints ---
+# --- Flask App and API Endpoints (Unchanged)---
 app = Flask(__name__)
 CORS(app)
 
