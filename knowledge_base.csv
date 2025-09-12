@@ -1,0 +1,60 @@
+﻿Number,recomendation,page_type,Description,Audience Type,Channel
+1,Marketing Channel Consistency - HP,Home Page,Social media campaigns are consistent across digital channels and direct users directly to the promoted service,All,Desktop/mobile web
+2,Contextual Personalization - location,Home Page,Contextual Personalization is used to recognize the users geo-location and provide navigation to a regional or translated page,New,Desktop/mobile web
+3,Contextual Personalization - device,Home Page,"Contextual Personalization is used to recognize the users device and optimize the browsing experience. Where applicable, promotion of the mobile app is visible for identified mobile device visitors",New,Desktop/mobile web
+4,Contextual Personalization - campaign source,Home Page,"Contextual Personalization is used to recognize which marketing campaign source the user entered from, and adapts the content to reflect this",New,Desktop/mobile web
+5,Quick to Content,Home Page,,All,Desktop/mobile web
+6,Homepage Recommendations New,Home Page,,New,Desktop/mobile web
+7,Homepage Recommendations Returning,Home Page,,Returning,Desktop/mobile web
+8,Dynamic Content,Home Page,,All,Desktop/mobile web
+9,Email Capture,Home Page,,New,Desktop/mobile web
+10,Interactive User Experience,Home Page,,All,Desktop/mobile web
+11,Promoting Offers / Benefits / Value Proposition,Home Page,,All,Desktop/mobile web
+12,Search ,Home Page,,All,Desktop/mobile web
+13,Mitigating Lead Churn ,Home Page,,New,Desktop/mobile web
+14,Advanced Filters in Recommendations - HP,Home Page,,All,Desktop/mobile web
+15,A/B Testing on Home Page,Home Page,,All,Desktop/mobile web
+15,Marketing Channel Consistency - PLP,PLP,,New,Desktop/mobile web
+16,Contextual Sort Order - location,PLP,,New,Desktop/mobile web
+17,Contextual Sort Order - device,PLP,,New,Desktop/mobile web
+18,Contextual Sort Order - campaign source,PLP,,New,Desktop/mobile web
+19,Category Recommendations New,PLP,,New,Desktop/mobile web
+20,Category Recommendations Returning,PLP,,Returning,Desktop/mobile web
+21,Personalized Sort Order ,PLP,,Returning,Desktop/mobile web
+22,Dynamic Content,PLP,,Returning,Desktop/mobile web
+24,Navigational Filters / Guidance,PLP,,All,Desktop/mobile web
+25,Promoting Offers / Benefits / Value Proposition,PLP,"product labels, socia proof",All,Desktop/mobile web
+26,A/B Testing on Category Page,PLP,,All,Desktop/mobile web
+27,Free Shipping / Min Order Value on add to cart,PLP,,All,Desktop/mobile web
+28,Quick to checkout ,PLP,,All,Desktop/mobile web
+29,Product Recommendations New,PDP,,New,Desktop/mobile web
+30,Promoting Offers / Benefits / Value Proposition,PDP,,All,Desktop/mobile web
+31,A/B Testing on PDP,PDP,,All,Desktop/mobile web
+32,Quick to checkout / Add to Cart ,PDP,,All,Desktop/mobile web
+33,Urgency Messaging,PDP,,All,Desktop/mobile web
+34,Product Recommendations Returning,PDP,,Returning,Desktop/mobile web
+35,Advanced Filters in Recommendations - PDP,PDP,,All,Desktop/mobile web
+36,Add to Cart recs on PDP,PDP,,All,Desktop/mobile web
+37,Out Of Stock Handling,PDP,,All,Desktop/mobile web
+38,Free Shipping / Min Order Value on add to cart,PDP,,All,Desktop/mobile web
+39,Cart Reminder on Return,Cart Page,,Returning,Desktop/mobile web
+40,Cross-Sell Recommendations on cart ,Cart Page,,All,Desktop/mobile web
+41,Promoting Offers / Benefits / Value Proposition,Cart Page,,All,Desktop/mobile web
+42,Free Shipping / Min Order Value reminder,Cart Page,,All,Desktop/mobile web
+43,A/B Testing on Cart  Page,Cart Page,,All,Desktop/mobile web
+44,Exit intent on cart page,Cart Page,,All,Desktop/mobile web
+45,Multiple Payment Options,checkout,,All,Desktop/mobile web
+46,New User Sign up at checkout,checkout,,New,Desktop/mobile web
+47,Loyalty Program Education,checkout,,New,Desktop/mobile web
+48,Guest Check Out option,checkout,,New,Desktop/mobile web
+49,Auto fill known fields ,checkout,,Returning,Desktop/mobile web
+50,A/B Testing on Cart  Page,checkout,,All,Desktop/mobile web
+51,Order Confirmation Email,CRM,,All,Email
+52,Order Shipping Updates Email ,CRM,,All,Email
+53,Cross-Sell Recommendations ,CRM,,All,Email
+54,Personalized Offers & Recommendations Emails,CRM,,Returning,Email
+55,Advanced Audiences - Logged In ,CRM,,Returning,Email
+56,Advanced Audiences - Browsing Users,CRM,,Returning,Desktop/mobile web
+57,Promoting app/loyalty program via CRM,CRM,,All,Email
+58,Triggered Email,CRM,,Returning,Email
+58,Presence of Blog/Content pieces,CRM,,All,Desktop/mobile web
