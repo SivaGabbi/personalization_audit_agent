@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -18,9 +19,6 @@ from PIL import Image, ImageChops
 import google.generativeai as genai
 from pptx import Presentation
 from pptx.util import Inches, Pt
-from pptx.enum.shapes import MSO_SHAPE
-from pptx.dml.color import RGBColor
-
 
 # --- In-memory storage for tasks and knowledge base ---
 tasks = {}
@@ -91,7 +89,7 @@ def generate_recommendations_with_llm(task_id, score_report):
     update_task(task_id, message="[Agent 2] Analyzing score report with RAG engine...")
     if not llm_model:
         update_task(task_id, message="   - ⚠️ LLM not configured. Skipping recommendations.")
-        return ["LLM model not available. Recommendations could not be generated."]
+        return [{"recommendation": "LLM model not available.", "justification": "Could not generate recommendations."}]
 
     findings_summary = []
     for category in score_report['breakdown'].values():
@@ -104,24 +102,15 @@ def generate_recommendations_with_llm(task_id, score_report):
     update_task(task_id, message=f"[Agent 2] Retrieved relevant context from knowledge base.")
 
     prompt = f"""
-    You are Agent 2, a world-class Personalization Advisor.
+    You are Agent 2, a world-class Personalization and Performance Advisor.
     Agent 1 conducted a technical analysis and found the following: {findings_summary_text} (Overall Score: {score_report['total_score']:.0f}/100).
-
-    **Your Task:**
-    Based on the findings, generate a JSON object with a key "recommendations". 
+    Your Task: Based on these findings and the provided best practices, generate a JSON object with a key "recommendations".
     This should be a list where each item is an OBJECT containing two keys:
     1. "recommendation" (a string with the actionable advice)
     2. "justification" (a brief string explaining why, based on the findings or best practices)
-
-    **Example Format:**
-    {{
-      "recommendations": [
-        {{
-          "recommendation": "Implement a 'Recently Viewed' module on the homepage.",
-          "justification": "This addresses the low Dynamic Homepage Change score by immediately reflecting user activity."
-        }}
-      ]
-    }}
+    
+    **Relevant Best Practices from RAG Knowledge Base:**
+    {rag_context}
     """
     try:
         response = llm_model.generate_content(prompt)
@@ -131,21 +120,19 @@ def generate_recommendations_with_llm(task_id, score_report):
         return llm_result.get('recommendations', [])
     except Exception as e:
         update_task(task_id, message=f"   - ❌ LLM Error: {e}")
-        return [f"An error occurred while generating recommendations: {e}"]
+        return [{"recommendation": f"An error occurred while generating recommendations.", "justification": str(e)}]
 
 def create_and_save_presentation(result_data, filename):
     prs = Presentation()
     score_report = result_data.get('score_report', {})
     recommendations = result_data.get('recommendations', [])
     
-    # Slide 1: Title
     slide = prs.slides.add_slide(prs.slide_layouts[0])
     title, subtitle = slide.shapes.title, slide.placeholders[1]
     url = score_report.get("url", "Website")
     title.text = "Personalization & Performance Audit"
     subtitle.text = f"An analysis of {url}\nGenerated on {pd.Timestamp.now().strftime('%Y-%m-%d')}"
     
-    # Slide 2: Score Summary
     slide = prs.slides.add_slide(prs.slide_layouts[5])
     title_shape = slide.shapes.add_textbox(Inches(0.5), Inches(0.5), Inches(9), Inches(1))
     title_shape.text = "Executive Summary: Score Breakdown"
@@ -157,27 +144,21 @@ def create_and_save_presentation(result_data, filename):
     
     for category_name, items in score_report.get('breakdown', {}).items():
         p = tf.add_paragraph()
-        p.text = f"\n{category_name.capitalize()} ({score_report[f'{category_name}_score']:.0f} pts)"
+        p.text = f"\n{category_name.capitalize()} ({score_report.get(f'{category_name}_score', 0):.0f} pts)"
         p.font.bold = True
         for item in items:
             p = tf.add_paragraph()
             p.text = f"{item['name']}: {item['score']:.0f}/{item['max_score']} - {item.get('details', '')}"
             p.level = 1
             
-    # Recommendation Slides
     for i, rec_obj in enumerate(recommendations, 1):
         slide = prs.slides.add_slide(prs.slide_layouts[1])
         slide.shapes.title.text = f"Recommendation #{i}"
         tf = slide.placeholders[1].text_frame
         tf.clear()
-        
-        # Main recommendation text
         p = tf.add_paragraph()
-        p.text = rec_obj.get('recommendation', str(rec_obj)) # Safely get the text
-        p.font.bold = True
-        p.font.size = Pt(20)
-        
-        # Justification text
+        p.text = rec_obj.get('recommendation', str(rec_obj))
+        p.font.bold = True; p.font.size = Pt(20)
         p = tf.add_paragraph()
         p.text = rec_obj.get('justification', '')
         p.font.size = Pt(16)
@@ -245,7 +226,7 @@ def compare_images(path_before, path_after, diff_path, task_id):
         before_img = Image.open(path_before).convert('RGB')
         width, height = before_img.size
         if width < 7 or height < 7:
-            update_task(task_id, message=f"   - ⚠️  Warning: Screenshot is too small ({width}x{height} pixels). Skipping comparison.")
+            update_task(task_id, message=f"   - ⚠️  Warning: Screenshot is too small. Skipping comparison.")
             return 0.0
         after_img = Image.open(path_after).convert('RGB')
         if before_img.size != after_img.size: after_img = after_img.resize(before_img.size)
@@ -265,49 +246,51 @@ def get_performance_score(driver, task_id):
         dom_interactive = nav_timing.get('domInteractive', 3000)
         update_task(task_id, message=f"   - First Contentful Paint (FCP): {fcp:.0f}ms")
         update_task(task_id, message=f"   - DOM Interactive: {dom_interactive:.0f}ms")
-
-        fcp_score = 15 if fcp < 1800 else (7 if fcp < 3000 else 0)
-        dom_interactive_score = 15 if dom_interactive < 2000 else (7 if dom_interactive < 4000 else 0)
-            
-        return {
-            "fcp_score": fcp_score, "dom_interactive_score": dom_interactive_score,
-            "fcp_value": fcp, "dom_interactive_value": dom_interactive
-        }
+        fcp_score = 10 if fcp < 1800 else (5 if fcp < 3000 else 0)
+        dom_interactive_score = 10 if dom_interactive < 2000 else (5 if dom_interactive < 4000 else 0)
+        return {"fcp_score": fcp_score, "dom_interactive_score": dom_interactive_score, "fcp_value": fcp, "dom_interactive_value": dom_interactive}
     except Exception as e:
         update_task(task_id, message=f"   - ⚠️ Could not retrieve performance metrics: {e}")
         return {"fcp_score": 0, "dom_interactive_score": 0, "fcp_value": 0, "dom_interactive_value": 0}
 
-# --- Inside app.py ---
+def get_visual_clarity_score(screenshot_path, task_id):
+    update_task(task_id, message="[Agent 1] Analyzing visual clarity...")
+    try:
+        img = Image.open(screenshot_path).convert('RGB')
+        img = img.resize((400, int(400 * img.height / img.width)))
+        colors = img.getcolors(img.width * img.height)
+        num_dominant_colors = len([c for c in colors if c[0] > (img.width * 0.01)])
+        update_task(task_id, message=f"   - Found {num_dominant_colors} dominant colors.")
+        color_score = 10 if num_dominant_colors <= 10 else (5 if num_dominant_colors <= 20 else 0)
+        pixels = np.array(img) / 255.0
+        luminance = 0.299 * pixels[:,:,0] + 0.587 * pixels[:,:,1] + 0.114 * pixels[:,:,2]
+        dark_pixels, light_pixels = np.sum(luminance < 0.2), np.sum(luminance > 0.8)
+        total_pixels = luminance.size
+        contrast_ratio = min(dark_pixels, light_pixels) / total_pixels
+        update_task(task_id, message=f"   - Contrast distribution ratio: {contrast_ratio:.2f}")
+        contrast_score = 10 if contrast_ratio > 0.1 else (5 if contrast_ratio > 0.05 else 0)
+        return {"contrast_score": contrast_score, "color_score": color_score, "num_colors": num_dominant_colors, "contrast_ratio": contrast_ratio}
+    except Exception as e:
+        update_task(task_id, message=f"   - ⚠️ Could not analyze visual clarity: {e}")
+        return {"contrast_score": 0, "color_score": 0, "num_colors": 0, "contrast_ratio": 0}
 
 def run_deep_simulation(url, task_id, num_products=3):
-    update_task(task_id, status='running', message="--- Starting Upgraded Simulation ---", progress=5)
+    update_task(task_id, status='running', message="--- Starting Full Spectrum Analysis ---", progress=5)
     
-    driver = None # Define driver here to ensure it's available in the finally block
+    driver = None
     try:
-        # --- MOVED DRIVER INITIALIZATION INSIDE THE TRY BLOCK ---
         options = webdriver.ChromeOptions()
-        options.add_argument('--headless')
-        options.add_argument("--window-size=1920,1080")
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
-        
-        # This is the line that is likely failing. Now the error will be caught.
+        options.add_argument('--headless'); options.add_argument("--window-size=1920,1080"); options.add_argument('--no-sandbox'); options.add_argument('--disable-dev-shm-usage'); options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
         driver = webdriver.Chrome(options=options)
         driver.set_page_load_timeout(30)
+        if not os.path.exists('screenshots'): os.makedirs('screenshots')
 
-        if not os.path.exists('screenshots'):
-            os.makedirs('screenshots')
-
-        # (The rest of the simulation logic is unchanged)
         capability_score = {'cdp_analytics': 0, 'ab_platform': 0, 'rec_widgets': 0}
         execution_score = {'homepage_change': 0, 'journey_personalization': 0}
         performance_score = {'fcp_score': 0, 'dom_interactive_score': 0}
-        perf_metrics = {}
-        found_vendors_list = []
-        difference = 0.0
+        clarity_score = {'contrast_score': 0, 'color_score': 0}
         
-        update_task(task_id, message="[Agent 1] Analyzing initial technology, performance, and features...", progress=10)
+        update_task(task_id, message="[Agent 1] Analyzing initial technology, performance, and design...", progress=10)
         driver.get(url)
         WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
         
@@ -319,12 +302,15 @@ def run_deep_simulation(url, task_id, num_products=3):
         before_screenshot_path = f'screenshots/{task_id}_before.png'
         driver.save_screenshot(before_screenshot_path)
         
+        clarity_data = get_visual_clarity_score(before_screenshot_path, task_id)
+        clarity_score['contrast_score'] = clarity_data['contrast_score']
+        clarity_score['color_score'] = clarity_data['color_score']
+        
         found_vendors_list = detect_vendors(driver, task_id)
         for vendor in found_vendors_list:
             if "CDP" in vendor or "Analytics" in vendor: capability_score['cdp_analytics'] = 10
             if "A/B Testing" in vendor or "Personalization" in vendor: capability_score['ab_platform'] = 10
-        if check_for_recommendations(driver, task_id):
-            capability_score['rec_widgets'] = 10
+        if check_for_recommendations(driver, task_id): capability_score['rec_widgets'] = 10
 
         update_task(task_id, message="[Agent 1] Simulating user journey...", progress=30)
         product_links = find_product_links(driver, url, task_id, limit=num_products)
@@ -335,7 +321,6 @@ def run_deep_simulation(url, task_id, num_products=3):
             driver.get(link)
             WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
             if check_for_recommendations(driver, task_id): journey_recs_found.add("product")
-
         update_task(task_id, progress=50)
 
         cart_paths = ['/cart', '/basket', '/checkout/cart']
@@ -355,8 +340,7 @@ def run_deep_simulation(url, task_id, num_products=3):
         WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
         after_screenshot_path = f'screenshots/{task_id}_after.png'
         driver.save_screenshot(after_screenshot_path)
-        if check_for_recommendations(driver, task_id):
-            journey_recs_found.add("homepage")
+        if check_for_recommendations(driver, task_id): journey_recs_found.add("homepage")
 
         difference = compare_images(before_screenshot_path, after_screenshot_path, f'screenshots/{task_id}_diff.png', task_id)
         execution_score['homepage_change'] = (difference / 5.0) * 20.0 if difference < 5.0 else 20.0
@@ -366,38 +350,33 @@ def run_deep_simulation(url, task_id, num_products=3):
         total_capability_score = sum(capability_score.values())
         total_execution_score = sum(execution_score.values())
         total_performance_score = sum(performance_score.values())
-        total_score = total_capability_score + total_execution_score + total_performance_score
+        total_clarity_score = sum(clarity_score.values())
+        total_score = total_capability_score + total_execution_score + total_performance_score + total_clarity_score
 
         score_report = {
             "url": url, "total_score": total_score, "capability_score": total_capability_score,
             "execution_score": total_execution_score, "performance_score": total_performance_score,
+            "clarity_score": total_clarity_score,
             "breakdown": {
                 "capability": [
                     {"name": "CDP / Analytics Platform", "score": capability_score['cdp_analytics'], "max_score": 10},
                     {"name": "A/B & Personalization Platform", "score": capability_score['ab_platform'], "max_score": 10},
                     {"name": "Recommendation Widgets", "score": capability_score['rec_widgets'], "max_score": 10},
-                ],
-                "execution": [
+                ], "execution": [
                     {"name": "Dynamic Homepage Change", "score": execution_score['homepage_change'], "max_score": 20, "details": f"{difference:.2f}% visual change"},
                     {"name": "Journey Personalization", "score": execution_score['journey_personalization'], "max_score": 20, "details": f"{len(journey_recs_found)}/3 page types"},
-                ],
-                "performance": [
-                    {"name": "First Contentful Paint (FCP)", "score": performance_score['fcp_score'], "max_score": 15, "details": f"{perf_metrics['fcp']:.0f}ms"},
-                    {"name": "DOM Interactive Time", "score": performance_score['dom_interactive_score'], "max_score": 15, "details": f"{perf_metrics['dom_interactive']:.0f}ms"},
+                ], "performance": [
+                    {"name": "First Contentful Paint (FCP)", "score": performance_score['fcp_score'], "max_score": 10, "details": f"{perf_metrics['fcp']:.0f}ms"},
+                    {"name": "DOM Interactive Time", "score": performance_score['dom_interactive_score'], "max_score": 10, "details": f"{perf_metrics['dom_interactive']:.0f}ms"},
+                ], "clarity": [
+                    {"name": "Contrast Ratio", "score": clarity_score['contrast_score'], "max_score": 10, "details": f"{clarity_data['contrast_ratio']:.2f} ratio"},
+                    {"name": "Color Palette Cohesion", "score": clarity_score['color_score'], "max_score": 10, "details": f"{clarity_data['num_colors']} dominant colors"},
                 ]
             }
         }
         
         recommendations = generate_recommendations_with_llm(task_id, score_report)
         final_result = { "score_report": score_report, "recommendations": recommendations }
-        if 'error' not in final_result:
-            update_task(task_id, message="[System] Generating PowerPoint report...", progress=98)
-            presentation_filename = f"reports/Report_{task_id}.pptx"
-            create_and_save_presentation(final_result, presentation_filename)
-            update_task(task_id, message=f"[System] Report saved as {presentation_filename}")
-        else:
-            update_task(task_id, message="[System] Skipping presentation generation due to an earlier error.")
-        # === END OF CHANGE ===
         
         update_task(task_id, message="[System] Generating PowerPoint report...", progress=98)
         presentation_filename = f"reports/Report_{task_id}.pptx"
