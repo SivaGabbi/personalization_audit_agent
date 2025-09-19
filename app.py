@@ -8,7 +8,6 @@ from urllib.parse import urlparse
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -72,23 +71,22 @@ def update_task(task_id, status=None, message=None, progress=None, result=None):
 
 def retrieve_relevant_context(findings_summary_text, top_k=3):
     if kb_df is None or 'embedding' not in kb_df.columns or not embedding_model:
-        return "Knowledge Base not available for context retrieval."
+        return []
     try:
         findings_embedding = genai.embed_content(model=embedding_model, content=findings_summary_text, task_type="retrieval_query")['embedding']
         kb_df['similarity'] = kb_df['embedding'].apply(lambda emb: 1 - cosine(emb, findings_embedding))
         top_k_df = kb_df.nlargest(top_k, 'similarity')
         context = []
         for _, row in top_k_df.iterrows():
-            context.append(f"- Use Case: {row['use_case']}\n  Best Practice: {row['best_practice']}")
-        return "\n".join(context) if context else "No specifically relevant best practices found."
+            context.append({"use_case": row['use_case'], "best_practice": row['best_practice']})
+        return context
     except Exception as e:
         print(f"Error during context retrieval: {e}")
-        return "Error retrieving context from knowledge base."
+        return []
 
 def generate_recommendations_with_llm(task_id, score_report):
     update_task(task_id, message="[Agent 2] Analyzing score report with RAG engine...")
     if not llm_model:
-        update_task(task_id, message="   - ⚠️ LLM not configured. Skipping recommendations.")
         return [{"recommendation": "LLM model not available.", "justification": "Could not generate recommendations."}]
 
     findings_summary = []
@@ -99,18 +97,23 @@ def generate_recommendations_with_llm(task_id, score_report):
     findings_summary_text = ", ".join(findings_summary)
     
     rag_context = retrieve_relevant_context(findings_summary_text)
-    update_task(task_id, message=f"[Agent 2] Retrieved relevant context from knowledge base.")
+    update_task(task_id, message=f"[Agent 2] Retrieved {len(rag_context)} relevant context(s) from knowledge base.")
 
     prompt = f"""
-    You are Agent 2, a world-class Personalization and Performance Advisor.
-    Agent 1 conducted a technical analysis and found the following: {findings_summary_text} (Overall Score: {score_report['total_score']:.0f}/100).
-    Your Task: Based on these findings and the provided best practices, generate a JSON object with a key "recommendations".
-    This should be a list where each item is an OBJECT containing two keys:
-    1. "recommendation" (a string with the actionable advice)
-    2. "justification" (a brief string explaining why, based on the findings or best practices)
-    
-    **Relevant Best Practices from RAG Knowledge Base:**
-    {rag_context}
+    You are Agent 2, a world-class Personalization Advisor.
+    Agent 1 conducted a technical analysis and produced the following score report:
+    - Overall Score: {score_report['total_score']:.0f}/100
+    - Key Findings: {findings_summary_text}
+
+    **Your Task:**
+    You MUST act as an expert consultant and generate recommendations based **only** on the following retrieved knowledge base articles. For each recommendation, you must explicitly reference the 'use_case' it relates to.
+
+    **Retrieved Knowledge Base Articles:**
+    {json.dumps(rag_context, indent=2)}
+
+    Generate a JSON object with a key "recommendations". This should be a list of **10 to 15** concise, actionable recommendations where each item is an OBJECT containing two keys:
+    1. "recommendation" (a string with the actionable advice derived from a 'best_practice')
+    2. "justification" (a string explaining how this advice addresses a key finding, referencing the corresponding 'use_case')
     """
     try:
         response = llm_model.generate_content(prompt)
@@ -120,7 +123,7 @@ def generate_recommendations_with_llm(task_id, score_report):
         return llm_result.get('recommendations', [])
     except Exception as e:
         update_task(task_id, message=f"   - ❌ LLM Error: {e}")
-        return [{"recommendation": f"An error occurred while generating recommendations.", "justification": str(e)}]
+        return [{"recommendation": "An error occurred while generating recommendations.", "justification": str(e)}]
 
 def create_and_save_presentation(result_data, filename):
     prs = Presentation()
@@ -268,11 +271,71 @@ def get_visual_clarity_score(screenshot_path, task_id):
         total_pixels = luminance.size
         contrast_ratio = min(dark_pixels, light_pixels) / total_pixels
         update_task(task_id, message=f"   - Contrast distribution ratio: {contrast_ratio:.2f}")
-        contrast_score = 10 if contrast_ratio > 0.1 else (5 if contrast_ratio > 0.05 else 0)
+        contrast_score = 5 if contrast_ratio > 0.1 else (2 if contrast_ratio > 0.05 else 0) # Max 5 for this simple heuristic
         return {"contrast_score": contrast_score, "color_score": color_score, "num_colors": num_dominant_colors, "contrast_ratio": contrast_ratio}
     except Exception as e:
         update_task(task_id, message=f"   - ⚠️ Could not analyze visual clarity: {e}")
         return {"contrast_score": 0, "color_score": 0, "num_colors": 0, "contrast_ratio": 0}
+
+def attempt_add_to_cart(driver, task_id):
+    update_task(task_id, message="[Agent 1] Attempting to add product to cart...")
+    selectors = ["button[data-testid='add-to-cart-button']", "button[id*='add-to-cart']", "button[class*='add-to-cart']", "button[name='add']", "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to cart')]", "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to bag')]", "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'add to basket')]"]
+    cart_selectors = ["[data-testid='cart-count']", "[class*='cart-count']", "[id*='cart-count']", "[data-cy='cart-count']"]
+    try:
+        initial_cart_count = 0
+        for selector in cart_selectors:
+            try:
+                count_element = driver.find_element(By.CSS_SELECTOR, selector)
+                initial_cart_count = int(count_element.text)
+                break
+            except: continue
+        for selector in selectors:
+            try:
+                add_to_cart_button = driver.find_element(By.XPATH, selector) if selector.startswith("//") else driver.find_element(By.CSS_SELECTOR, selector)
+                add_to_cart_button.click()
+                update_task(task_id, message="   - ✅ Clicked 'Add to Cart' button.")
+                time.sleep(3)
+                body_text = driver.find_element(By.TAG_NAME, 'body').text.lower()
+                if "added to cart" in body_text or "added to bag" in body_text or "added to your basket" in body_text:
+                    update_task(task_id, message="   - ✅ Verified: Success message found.")
+                    return True
+                for cart_selector in cart_selectors:
+                    try:
+                        count_element = driver.find_element(By.CSS_SELECTOR, cart_selector)
+                        new_cart_count = int(count_element.text)
+                        if new_cart_count > initial_cart_count:
+                            update_task(task_id, message="   - ✅ Verified: Cart item count increased.")
+                            return True
+                    except: continue
+                update_task(task_id, message="   - ⚪ Clicked button, but could not verify success.")
+                return False
+            except: continue
+        update_task(task_id, message="   - ❌ Could not find an 'Add to Cart' button.")
+        return False
+    except Exception as e:
+        update_task(task_id, message=f"   - ❌ Error during add to cart attempt: {e}")
+        return False
+
+def attempt_newsletter_signup(driver, task_id):
+    update_task(task_id, message="[Agent 1] Attempting newsletter signup...")
+    try:
+        email_input = driver.find_element(By.CSS_SELECTOR, "input[type='email'], input[name='email']")
+        submit_button = email_input.find_element(By.XPATH, "./following::button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'sign up')] | ./following::button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'subscribe')] | ./following::input[@type='submit']")
+        fake_email = f"testuser_{uuid.uuid4().hex[:8]}@example.com"
+        email_input.send_keys(fake_email)
+        submit_button.click()
+        update_task(task_id, message=f"   - ✅ Found form and submitted email.")
+        time.sleep(3)
+        body_text = driver.find_element(By.TAG_NAME, 'body').text.lower()
+        if "thank you" in body_text or "thanks for subscribing" in body_text or "welcome" in body_text or "you're in" in body_text:
+            update_task(task_id, message="   - ✅ Verified: Success message found.")
+            return True
+        else:
+            update_task(task_id, message="   - ⚪ Submitted form, but could not verify success.")
+            return False
+    except:
+        update_task(task_id, message="   - ❌ Could not find a newsletter signup form.")
+        return False
 
 def run_deep_simulation(url, task_id, num_products=3):
     update_task(task_id, status='running', message="--- Starting Full Spectrum Analysis ---", progress=5)
@@ -289,6 +352,7 @@ def run_deep_simulation(url, task_id, num_products=3):
         execution_score = {'homepage_change': 0, 'journey_personalization': 0}
         performance_score = {'fcp_score': 0, 'dom_interactive_score': 0}
         clarity_score = {'contrast_score': 0, 'color_score': 0}
+        interactivity_score = {'add_to_cart': 0, 'newsletter_signup': 0}
         
         update_task(task_id, message="[Agent 1] Analyzing initial technology, performance, and design...", progress=10)
         driver.get(url)
@@ -310,17 +374,25 @@ def run_deep_simulation(url, task_id, num_products=3):
         for vendor in found_vendors_list:
             if "CDP" in vendor or "Analytics" in vendor: capability_score['cdp_analytics'] = 10
             if "A/B Testing" in vendor or "Personalization" in vendor: capability_score['ab_platform'] = 10
-        if check_for_recommendations(driver, task_id): capability_score['rec_widgets'] = 10
+        if check_for_recommendations(driver, task_id): capability_score['rec_widgets'] = 5
 
+        if attempt_newsletter_signup(driver, task_id):
+            interactivity_score['newsletter_signup'] = 5
+        
         update_task(task_id, message="[Agent 1] Simulating user journey...", progress=30)
         product_links = find_product_links(driver, url, task_id, limit=num_products)
         if not product_links: raise Exception("Could not find any product links to visit.")
         
         journey_recs_found = set()
+        add_to_cart_success = False
         for i, link in enumerate(product_links, 1):
             driver.get(link)
             WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
             if check_for_recommendations(driver, task_id): journey_recs_found.add("product")
+            if not add_to_cart_success:
+                if attempt_add_to_cart(driver, task_id):
+                    interactivity_score['add_to_cart'] = 10
+                    add_to_cart_success = True
         update_task(task_id, progress=50)
 
         cart_paths = ['/cart', '/basket', '/checkout/cart']
@@ -344,33 +416,37 @@ def run_deep_simulation(url, task_id, num_products=3):
 
         difference = compare_images(before_screenshot_path, after_screenshot_path, f'screenshots/{task_id}_diff.png', task_id)
         execution_score['homepage_change'] = (difference / 5.0) * 20.0 if difference < 5.0 else 20.0
-        execution_score['journey_personalization'] = (len(journey_recs_found) / 3) * 20
+        execution_score['journey_personalization'] = (len(journey_recs_found) / 3) * 10
         update_task(task_id, message="[Agent 1] Quantitative analysis complete.", progress=90)
         
         total_capability_score = sum(capability_score.values())
         total_execution_score = sum(execution_score.values())
         total_performance_score = sum(performance_score.values())
         total_clarity_score = sum(clarity_score.values())
-        total_score = total_capability_score + total_execution_score + total_performance_score + total_clarity_score
+        total_interactivity_score = sum(interactivity_score.values())
+        total_score = total_capability_score + total_execution_score + total_performance_score + total_clarity_score + total_interactivity_score
 
         score_report = {
             "url": url, "total_score": total_score, "capability_score": total_capability_score,
             "execution_score": total_execution_score, "performance_score": total_performance_score,
-            "clarity_score": total_clarity_score,
+            "clarity_score": total_clarity_score, "interactivity_score": total_interactivity_score,
             "breakdown": {
                 "capability": [
                     {"name": "CDP / Analytics Platform", "score": capability_score['cdp_analytics'], "max_score": 10},
                     {"name": "A/B & Personalization Platform", "score": capability_score['ab_platform'], "max_score": 10},
-                    {"name": "Recommendation Widgets", "score": capability_score['rec_widgets'], "max_score": 10},
+                    {"name": "Recommendation Widgets", "score": capability_score['rec_widgets'], "max_score": 5},
                 ], "execution": [
                     {"name": "Dynamic Homepage Change", "score": execution_score['homepage_change'], "max_score": 20, "details": f"{difference:.2f}% visual change"},
-                    {"name": "Journey Personalization", "score": execution_score['journey_personalization'], "max_score": 20, "details": f"{len(journey_recs_found)}/3 page types"},
+                    {"name": "Journey Personalization", "score": execution_score['journey_personalization'], "max_score": 10, "details": f"{len(journey_recs_found)}/3 page types"},
                 ], "performance": [
                     {"name": "First Contentful Paint (FCP)", "score": performance_score['fcp_score'], "max_score": 10, "details": f"{perf_metrics['fcp']:.0f}ms"},
                     {"name": "DOM Interactive Time", "score": performance_score['dom_interactive_score'], "max_score": 10, "details": f"{perf_metrics['dom_interactive']:.0f}ms"},
                 ], "clarity": [
-                    {"name": "Contrast Ratio", "score": clarity_score['contrast_score'], "max_score": 10, "details": f"{clarity_data['contrast_ratio']:.2f} ratio"},
+                    {"name": "Contrast Ratio", "score": clarity_score['contrast_score'], "max_score": 5, "details": f"{clarity_data['contrast_ratio']:.2f} ratio"},
                     {"name": "Color Palette Cohesion", "score": clarity_score['color_score'], "max_score": 10, "details": f"{clarity_data['num_colors']} dominant colors"},
+                ], "interactivity": [
+                    {"name": "Add to Cart", "score": interactivity_score['add_to_cart'], "max_score": 10},
+                    {"name": "Newsletter Signup", "score": interactivity_score['newsletter_signup'], "max_score": 5},
                 ]
             }
         }
